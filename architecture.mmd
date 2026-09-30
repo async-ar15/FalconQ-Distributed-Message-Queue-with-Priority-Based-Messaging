@@ -1,0 +1,29 @@
+graph TD
+
+  Broker --> TopicOrders[Topic: orders]
+  Broker --> TopicPayments[Topic: payments]
+
+  TopicOrders --> Partition0Orders[Partition 0]
+  TopicPayments --> Partition0Payments[Partition 0]
+
+  Partition0Orders --> HighQueue1[High Priority Queue]
+  Partition0Orders --> LowQueue1[Low Priority Queue]
+  Partition0Orders --> Offsets1[Consumer Offsets]
+
+  Partition0Payments --> HighQueue2[High Priority Queue]
+  Partition0Payments --> LowQueue2[Low Priority Queue]
+  Partition0Payments --> Offsets2[Consumer Offsets]
+
+  subgraph API Endpoints
+    Publish[POST /topic/:topic/publish]
+    Peek[GET /topic/:topic/peek]
+    Consume[GET /topic/:topic/consume]
+    Topics[GET /topics]
+    Partitions[GET /topics/:topic/partitions]
+  end
+
+  Publish --> Broker
+  Peek --> Broker
+  Consume --> Broker
+  Topics --> Broker
+  Partitions --> Broker
