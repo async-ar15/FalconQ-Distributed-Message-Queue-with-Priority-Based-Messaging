@@ -329,3 +329,72 @@ func (b *Broker) Close() error {
 }
 
 // --- Partition Methods (Key Generators, Persistence, Offset Management) ---
+func GenerateMessageKey(topicName string, partitionID int, offset uint64) []byte {
+	keyPrefix := fmt.Sprintf("t/%s/p/%d/m/", topicName, partitionID)
+	key := make([]byte, len(keyPrefix)+8)
+	copy(key, []byte(keyPrefix))
+	binary.BigEndian.PutUint64(key[len(keyPrefix):], offset)
+	return key
+}
+func GenerateConsumerOffsetKey(topicName string, partitionID int, consumerID string) []byte {
+	return []byte(fmt.Sprintf("t/%s/p/%d/c/%s", topicName, partitionID, consumerID))
+}
+func GetOffsetFromMessageKey(key []byte, prefixLen int) (uint64, error) {
+	if len(key) != prefixLen+8 {
+		return 0, fmt.Errorf("invalid key len: got %d, want %d", len(key), prefixLen+8)
+	}
+	return binary.BigEndian.Uint64(key[prefixLen:]), nil
+}
+func (p *Partition) GetNextMessageOffset() (uint64, error) {
+	if p.offsetSeq == nil {
+		return 0, fmt.Errorf("msg sequence not init for p%d", p.ID)
+	}
+	return p.offsetSeq.Next()
+}
+func (p *Partition) ReadMessages(startOffset uint64, batchSize int) ([]StoredMessage, uint64, error) {
+	messages := make([]StoredMessage, 0, batchSize)
+	var nextOffset uint64 = startOffset
+	err := p.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchValues = true
+		opts.PrefetchSize = batchSize * 2
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		keyPrefixBytes := []byte(fmt.Sprintf("t/%s/p/%d/m/", p.TopicName, p.ID))
+		startKey := GenerateMessageKey(p.TopicName, p.ID, startOffset)
+		lastProcessedOffset := startOffset - 1
+		it.Seek(startKey)
+		for ; it.ValidForPrefix(keyPrefixBytes) && len(messages) < batchSize; it.Next() {
+			item := it.Item()
+			key := item.Key()
+			currentKeyOffset, err := GetOffsetFromMessageKey(key, len(keyPrefixBytes))
+			if err != nil {
+				log.Printf("WARN: Skip key fmt p%d: %s (%v)", p.ID, key, err)
+				continue
+			}
+			var msg StoredMessage
+			err = item.Value(func(val []byte) error {
+				if err := json.Unmarshal(val, &msg); err != nil {
+					log.Printf("WARN: Unmarshal msg p%d offset %d: %v", p.ID, currentKeyOffset, err)
+					return nil
+				}
+				return nil
+			})
+			if err != nil {
+				return fmt.Errorf("read val p%d offset %d: %w", p.ID, currentKeyOffset, err)
+			}
+			if msg.Value == "" && msg.Priority == "" {
+				continue
+			}
+			msg.Offset = currentKeyOffset
+			messages = append(messages, msg)
+			lastProcessedOffset = currentKeyOffset
+		}
+		nextOffset = lastProcessedOffset + 1
+		return nil
+	})
+	if err != nil {
+		return nil, startOffset, fmt.Errorf("batch read p%d: %w", p.ID, err)
+	}
+	return messages, nextOffset, nil
+}
