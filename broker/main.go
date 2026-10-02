@@ -443,3 +443,92 @@ func min(a, b int) int {
 	}
 	return b
 }
+func getAdvertiseHost(cfg *Config) string {
+	ifaces, err := net.Interfaces()
+	if err == nil {
+		for _, i := range ifaces {
+			addrs, err := i.Addrs()
+			if err == nil {
+				for _, addr := range addrs {
+					var ip net.IP
+					switch v := addr.(type) {
+					case *net.IPNet:
+						ip = v.IP
+					case *net.IPAddr:
+						ip = v.IP
+					}
+					if ip != nil && !ip.IsLoopback() && ip.To4() != nil {
+						return ip.String()
+					}
+				}
+			}
+		}
+	}
+	if cfg.CurrentNode != nil {
+		host, _, _ := net.SplitHostPort(cfg.CurrentNode.HTTPAddress)
+		if host != "" && host != "localhost" && host != "127.0.0.1" && host != "::1" {
+			return host
+		}
+	}
+	return "127.0.0.1"
+}
+
+// --- Config Structs and Loading ---
+type NodeConfig struct {
+	HTTPAddress string `yaml:"http_address"`
+	RaftAddress string `yaml:"raft_address"`
+}
+type Config struct {
+	DefaultNumPartitions int                   `yaml:"default_num_partitions"`
+	Nodes                map[string]NodeConfig `yaml:"nodes"`
+	CurrentNodeID        string                `yaml:"-"`
+	CurrentNode          *NodeConfig           `yaml:"-"`
+}
+
+func LoadConfig(path string, currentNodeID string) (*Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read cfg %s: %w", path, err)
+	}
+	var cfg Config
+	err = yaml.Unmarshal(data, &cfg)
+	if err != nil {
+		return nil, fmt.Errorf("unmarshal cfg %s: %w", path, err)
+	}
+	cfg.CurrentNodeID = currentNodeID
+	nodeSpecificConfig, ok := cfg.Nodes[currentNodeID]
+	if !ok {
+		return nil, fmt.Errorf("node_id '%s' not in cfg nodes", currentNodeID)
+	}
+	cfg.CurrentNode = &nodeSpecificConfig
+	if cfg.CurrentNode.HTTPAddress == "" {
+		return nil, fmt.Errorf("http_address missing for node %s", currentNodeID)
+	}
+	if cfg.CurrentNode.RaftAddress == "" {
+		return nil, fmt.Errorf("raft_address missing for node %s", currentNodeID)
+	}
+	if cfg.DefaultNumPartitions == 0 {
+		cfg.DefaultNumPartitions = DefaultNumPartitionsConstant
+	}
+	return &cfg, nil
+}
+func (cfg *Config) GetPeerHTTPAddress(raftNodeAddress string) string { // raftNodeAddress is like "host:raft_port"
+	targetRaftHost, targetRaftPortStr, err := net.SplitHostPort(raftNodeAddress)
+	if err != nil {
+		log.Printf("ERROR: Invalid Raft node address format for lookup: %s", raftNodeAddress)
+		return ""
+	}
+	targetRaftPort, _ := strconv.Atoi(targetRaftPortStr)
+	for _, nodeCfg := range cfg.Nodes {
+		nodeRaftHost, nodeRaftPortStr, _ := net.SplitHostPort(nodeCfg.RaftAddress)
+		nodeRaftPort, _ := strconv.Atoi(nodeRaftPortStr)
+		isHostMatch := (nodeRaftHost == targetRaftHost) || (targetRaftHost == "127.0.0.1" && (nodeRaftHost == "localhost" || nodeRaftHost == "")) || (targetRaftHost == "localhost" && (nodeRaftHost == "127.0.0.1" || nodeRaftHost == ""))
+		if isHostMatch && nodeRaftPort == targetRaftPort {
+			return fmt.Sprintf("http://%s", nodeCfg.HTTPAddress)
+		}
+	}
+	log.Printf("WARN: Could not find peer config for Raft address %s", raftNodeAddress)
+	return ""
+}
+
+// --- Main Function ---
