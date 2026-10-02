@@ -398,3 +398,48 @@ func (p *Partition) ReadMessages(startOffset uint64, batchSize int) ([]StoredMes
 	}
 	return messages, nextOffset, nil
 }
+func (p *Partition) GetConsumerOffset(consumerID string) (uint64, error) {
+	key := GenerateConsumerOffsetKey(p.TopicName, p.ID, consumerID)
+	var offset uint64 = 0
+	err := p.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get(key)
+		if err != nil {
+			if err == badger.ErrKeyNotFound {
+				return nil
+			}
+			return err
+		}
+		err = item.Value(func(val []byte) error {
+			if len(val) != 8 {
+				log.Printf("ERR: Corrupted offset consumer '%s' %s p%d. Len: %d. Reset 0.", consumerID, p.TopicName, p.ID, len(val))
+				offset = 0
+				return nil
+			}
+			offset = binary.BigEndian.Uint64(val)
+			return nil
+		})
+		return err
+	})
+	if err != nil {
+		return 0, fmt.Errorf("get consumer offset '%s' on '%s'/p%d: %w", consumerID, p.TopicName, p.ID, err)
+	}
+	return offset, nil
+}
+func (p *Partition) SetConsumerOffset(consumerID string, offset uint64) error {
+	key := GenerateConsumerOffsetKey(p.TopicName, p.ID, consumerID)
+	valBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(valBytes, offset)
+	err := p.db.Update(func(txn *badger.Txn) error { return txn.Set(key, valBytes) })
+	if err != nil {
+		return fmt.Errorf("set consumer offset '%s' on '%s'/p%d to %d: %w", consumerID, p.TopicName, p.ID, offset, err)
+	}
+	return nil
+}
+
+// --- Helper Functions ---
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
