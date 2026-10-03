@@ -532,3 +532,85 @@ func (cfg *Config) GetPeerHTTPAddress(raftNodeAddress string) string { // raftNo
 }
 
 // --- Main Function ---
+func main() {
+	fmt.Println("Starting FalconQ Broker...")
+	configPath := flag.String("config", "config.yaml", "Path to config file")
+	nodeIDFlag := flag.String("nodeid", "", "This node's ID (must match a key in config.yaml nodes section)")
+	flag.Parse()
+	if *nodeIDFlag == "" {
+		log.Fatal("-nodeid flag is required")
+	}
+	cfg, err := LoadConfig(*configPath, *nodeIDFlag)
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	raftBindAddr := cfg.CurrentNode.RaftAddress
+	raftAdvertiseHost := getAdvertiseHost(cfg)
+	_, raftAdvertisePortStr, _ := net.SplitHostPort(cfg.CurrentNode.RaftAddress)
+	raftAdvertiseAddrFull := fmt.Sprintf("%s:%s", raftAdvertiseHost, raftAdvertisePortStr)
+	raftAdvertiseNetAddr, err := net.ResolveTCPAddr("tcp", raftAdvertiseAddrFull)
+	if err != nil {
+		log.Fatalf("Resolve Raft advertise address %s: %v", raftAdvertiseAddrFull, err)
+	}
+	transport, err := raft.NewTCPTransport(raftBindAddr, raftAdvertiseNetAddr, 3, 10*time.Second, io.Discard)
+	if err != nil {
+		log.Fatalf("Create Raft transport: %v", err)
+	}
+
+	dbPath := fmt.Sprintf("falconq_data_%s", cfg.CurrentNodeID)
+	_, httpPortStr, _ := net.SplitHostPort(cfg.CurrentNode.HTTPAddress)
+	port := fmt.Sprintf(":%s", httpPortStr)
+	fmt.Printf("Node ID: %s | HTTP on: %s | Raft on: %s (Advertise: %s)\n", cfg.CurrentNodeID, cfg.CurrentNode.HTTPAddress, cfg.CurrentNode.RaftAddress, raftAdvertiseAddrFull)
+	fmt.Printf("Opening BadgerDB at path: %s\n", dbPath)
+	opts := badger.DefaultOptions(dbPath).WithLogger(nil)
+	db, err := badger.Open(opts)
+	if err != nil {
+		log.Fatalf("❌ Open BadgerDB: %v", err)
+	}
+	broker = NewBroker(db, cfg, transport)
+	fmt.Println("Broker initialized.")
+	if _, err := broker.getOrCreateTopic("default-topic"); err != nil {
+		log.Printf("Error pre-creating default topic: %v", err)
+	} // Eagerly create a topic to start Raft groups
+
+	gin.SetMode(gin.ReleaseMode)
+	r := gin.New()
+	r.Use(gin.Logger())
+	r.Use(gin.Recovery())
+	r.POST("/topic/:topic/publish", handlePublish)
+	r.GET("/topic/:topic/peek", handlePeek)
+	r.GET("/topic/:topic/consume", handleConsume)
+	r.GET("/topics", handleGetTopics)
+	r.GET("/topics/:topic/partitions", handleGetPartitions)
+	r.GET("/raft/stats", handleRaftStats)
+	srv := &http.Server{Addr: port, Handler: r}
+	go func() {
+		fmt.Printf("🚀 FalconQ Broker API for node %s running at http://%s | Raft on %s\n", cfg.CurrentNodeID, cfg.CurrentNode.HTTPAddress, cfg.CurrentNode.RaftAddress)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("listen: %s\n", err)
+		}
+	}()
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Printf("🚦 Shutting down server for node %s...", cfg.CurrentNodeID)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatalf("❌ Server %s forced to shutdown: %v", cfg.CurrentNodeID, err)
+	}
+	log.Printf("🧹 Closing broker resources for node %s...", cfg.CurrentNodeID)
+	if broker != nil {
+		if err := broker.Close(); err != nil {
+			log.Printf("❌ Error closing broker resources for %s: %v", cfg.CurrentNodeID, err)
+		} else {
+			log.Printf("✅ Broker resources for %s closed.", cfg.CurrentNodeID)
+		}
+	} else if db != nil {
+		db.Close()
+	}
+	log.Printf("👋 Server %s exiting", cfg.CurrentNodeID)
+}
+
+// --- Request Handlers ---
