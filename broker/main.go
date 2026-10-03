@@ -614,3 +614,114 @@ func main() {
 }
 
 // --- Request Handlers ---
+func handlePublish(c *gin.Context) {
+	topicName := c.Param("topic")
+	var msg Message
+	if err := c.BindJSON(&msg); err != nil {
+		c.JSON(http.StatusBadRequest, NewApiError("ValidationError", "Invalid message format", err.Error()))
+		return
+	}
+	if msg.Priority != "high" && msg.Priority != "low" {
+		c.JSON(http.StatusBadRequest, NewApiError("ValidationError", "Invalid priority value", "Priority must be 'high' or 'low'"))
+		return
+	}
+	topic, err := broker.getOrCreateTopic(topicName)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, NewApiError("ServerError", "Failed to access topic", err.Error()))
+		return
+	}
+	var targetPartitionID int
+	if msg.PartitionKey != nil && *msg.PartitionKey != "" {
+		partitionStr, err := topic.HashRing.Get(*msg.PartitionKey)
+		if err != nil {
+			log.Printf("WARN: Consistent hash topic %s key '%s': %v. Fallback.", topicName, *msg.PartitionKey, err)
+			topic.mu.Lock()
+			targetPartitionID = int(topic.roundRobinCounter % uint64(topic.NumPartitions))
+			topic.roundRobinCounter++
+			topic.mu.Unlock()
+		} else {
+			targetPartitionID, err = strconv.Atoi(partitionStr)
+			if err != nil {
+				log.Printf("WARN: Consistent hash non-int '%s' topic %s key '%s': %v. Fallback.", partitionStr, topicName, *msg.PartitionKey, err)
+				topic.mu.Lock()
+				targetPartitionID = int(topic.roundRobinCounter % uint64(topic.NumPartitions))
+				topic.roundRobinCounter++
+				topic.mu.Unlock()
+			}
+		}
+	} else {
+		topic.mu.Lock()
+		targetPartitionID = int(topic.roundRobinCounter % uint64(topic.NumPartitions))
+		topic.roundRobinCounter++
+		topic.mu.Unlock()
+	}
+	partition, err := topic.getOrCreatePartition(targetPartitionID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, NewApiError("ServerError", "Failed to access target partition", err.Error()))
+		return
+	}
+	if partition.raftNode == nil {
+		c.JSON(http.StatusInternalServerError, NewApiError("ServerError", "Raft not initialized for partition", fmt.Sprintf("p%d", targetPartitionID)))
+		return
+	}
+
+	if partition.raftNode.State() != raft.Leader {
+		leaderRaftAddr := string(partition.raftNode.Leader())
+		if leaderRaftAddr == "" {
+			c.JSON(http.StatusServiceUnavailable, NewApiError("ServiceUnavailable", "No leader for partition", fmt.Sprintf("p%d", targetPartitionID)))
+			return
+		}
+		leaderHTTPAddr := broker.Config.GetPeerHTTPAddress(leaderRaftAddr) // Use broker.Config
+		if leaderHTTPAddr == "" {
+			c.JSON(http.StatusInternalServerError, NewApiError("ServerError", "Could not resolve leader HTTP address", leaderRaftAddr))
+			return
+		}
+		log.Printf("Forwarding publish for topic %s p%d to leader %s (%s)", topicName, targetPartitionID, leaderRaftAddr, leaderHTTPAddr)
+		forwardURL := fmt.Sprintf("%s%s", leaderHTTPAddr, c.Request.URL.Path)
+		if c.Request.URL.RawQuery != "" {
+			forwardURL += "?" + c.Request.URL.RawQuery
+		}
+		bodyBytes, _ := json.Marshal(msg)
+		proxyReq, err := http.NewRequest(c.Request.Method, forwardURL, bytes.NewBuffer(bodyBytes))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, NewApiError("ServerError", "Failed to create forward request", err.Error()))
+			return
+		}
+		proxyReq.Header = c.Request.Header.Clone()
+		proxyReq.Header.Set("Content-Type", "application/json")
+		httpClient := &http.Client{Timeout: 5 * time.Second}
+		resp, err := httpClient.Do(proxyReq)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, NewApiError("BadGateway", "Failed to forward request to leader", err.Error()))
+			return
+		}
+		defer resp.Body.Close()
+		for k, vv := range resp.Header {
+			for _, v := range vv {
+				c.Writer.Header().Add(k, v)
+			}
+		}
+		c.Writer.WriteHeader(resp.StatusCode)
+		io.Copy(c.Writer, resp.Body)
+		return
+	}
+	assignedOffset, err := partition.GetNextMessageOffset()
+	if err != nil {
+		log.Printf("❌ Leader failed to get next offset for topic '%s' p%d: %v", topicName, targetPartitionID, err)
+		c.JSON(http.StatusInternalServerError, NewApiError("ServerError", "Failed to generate offset", err.Error()))
+		return
+	}
+	cmd := RaftCommand{Operation: "append", Topic: topicName, Partition: targetPartitionID, Offset: assignedOffset, Value: msg.Value, Priority: msg.Priority}
+	cmdBytes, err := json.Marshal(cmd)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, NewApiError("ServerError", "Failed to marshal Raft command", err.Error()))
+		return
+	}
+	applyFuture := partition.raftNode.Apply(cmdBytes, raftApplyTimeout)
+	if err := applyFuture.Error(); err != nil {
+		log.Printf("❌ Raft Apply failed for topic '%s' p%d: %v", topicName, targetPartitionID, err)
+		c.JSON(http.StatusInternalServerError, NewApiError("ServerError", "Failed to commit message via Raft", err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "message committed", "topic": topicName, "partitionID": targetPartitionID, "offset": assignedOffset, "priority": msg.Priority})
+}
