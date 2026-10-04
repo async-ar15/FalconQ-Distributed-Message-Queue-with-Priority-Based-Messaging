@@ -858,3 +858,72 @@ func handleConsume(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"consumerID": consumerID, "topic": topicName, "partitionID": partitionID, "messages": messagesToSend, "startOffset": currentConsumerOffset, "count": len(messagesToSend), "nextOffset": finalConsumerNextOffset})
 }
+func handleGetTopics(c *gin.Context) {
+	broker.mu.RLock()
+	defer broker.mu.RUnlock()
+	topicNames := make([]string, 0, len(broker.Topics))
+	for name := range broker.Topics {
+		topicNames = append(topicNames, name)
+	}
+	sort.Strings(topicNames)
+	c.JSON(http.StatusOK, gin.H{"topics": topicNames})
+}
+
+type PartitionInfo struct {
+	ID int `json:"id"`
+}
+
+func handleGetPartitions(c *gin.Context) {
+	topicName := c.Param("topic")
+	broker.mu.RLock()
+	topic, topicExists := broker.Topics[topicName]
+	broker.mu.RUnlock()
+	if !topicExists {
+		c.JSON(http.StatusNotFound, NewApiError("NotFoundError", "Topic not found", fmt.Sprintf("Topic '%s' does not exist", topicName)))
+		return
+	}
+	topic.mu.RLock()
+	defer topic.mu.RUnlock()
+	partitionInfos := make([]PartitionInfo, 0, len(topic.Partitions))
+	partitionIDs := make([]int, 0, len(topic.Partitions))
+	for id := range topic.Partitions {
+		partitionIDs = append(partitionIDs, id)
+	} // Only list initialized partitions
+	sort.Ints(partitionIDs)
+	for _, id := range partitionIDs {
+		partitionInfos = append(partitionInfos, PartitionInfo{ID: id})
+	}
+	c.JSON(http.StatusOK, gin.H{"topic": topicName, "configuredPartitions": topic.NumPartitions, "partitionKeyStrategy": "consistent_hash+round_robin_fallback", "activePartitions": partitionInfos})
+}
+func handleRaftStats(c *gin.Context) {
+	topicName := c.Query("topic")
+	partitionIDStr := c.Query("partitionID")
+	if topicName == "" || partitionIDStr == "" {
+		c.JSON(http.StatusBadRequest, NewApiError("ValidationError", "topic and partitionID query parameters are required", ""))
+		return
+	}
+	partitionID, err := strconv.Atoi(partitionIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, NewApiError("ValidationError", "Invalid partitionID format", err.Error()))
+		return
+	}
+	broker.mu.RLock()
+	topic, topicExists := broker.Topics[topicName]
+	broker.mu.RUnlock()
+	if !topicExists {
+		c.JSON(http.StatusNotFound, NewApiError("NotFoundError", "Topic not found", topicName))
+		return
+	}
+	topic.mu.RLock()
+	partition, partExists := topic.Partitions[partitionID]
+	topic.mu.RUnlock()
+	if !partExists {
+		c.JSON(http.StatusNotFound, NewApiError("NotFoundError", "Partition not found or not yet initialized", fmt.Sprintf("%s/p%d", topicName, partitionID)))
+		return
+	}
+	if partition.raftNode == nil {
+		c.JSON(http.StatusServiceUnavailable, NewApiError("ServiceUnavailable", "Raft not initialized for this partition", ""))
+		return
+	}
+	c.JSON(http.StatusOK, partition.raftNode.Stats())
+}
