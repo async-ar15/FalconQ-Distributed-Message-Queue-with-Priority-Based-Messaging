@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FalconQ - High-Performance Message Queue</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface-hover: #21262d;
+      --text: #c9d1d9;
+      --text-dim: #8b949e;
+      --border: #30363d;
+      --accent: #3b82f6;
+      --accent-bright: #60a5fa;
+      
+      --font-display: 'Plus Jakarta Sans', system-ui, sans-serif;
+      --font-body: 'Inter', system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      line-height: 1.6;
+      padding-top: 80px;
+    }
+
+    .nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 60px;
+      background: rgba(22, 27, 34, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 32px;
+      z-index: 100;
+    }
+
+    .nav__brand {
+      font-family: var(--font-display);
+      font-weight: 700;
+      color: #ffffff;
+      text-decoration: none;
+      font-size: 18px;
+      margin-right: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .nav__brand span { color: var(--accent); }
+
+    .nav__links {
+      display: flex;
+      gap: 24px;
+    }
+
+    .nav__link {
+      font-family: var(--font-body);
+      font-weight: 500;
+      font-size: 14px;
+      color: var(--text-dim);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .nav__link:hover, .nav__link.active {
+      color: #ffffff;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+
+    h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 700; color: #ffffff; }
+    
+    .hero { margin-bottom: 60px; text-align: center; border-bottom: 1px solid var(--border); padding-bottom: 60px; }
+    .hero h1 { font-size: 56px; margin-bottom: 24px; line-height: 1.1; letter-spacing: -1px; }
+    .hero h1 span { color: var(--accent); }
+    .hero p { font-size: 20px; color: var(--text-dim); max-width: 650px; margin: 0 auto 32px; }
+    
+    .btn {
+      display: inline-block;
+      background: var(--accent);
+      color: #ffffff;
+      padding: 12px 24px;
+      border-radius: 6px;
+      text-decoration: none;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    .btn:hover { background: var(--accent-bright); }
+
+    .section { margin-bottom: 80px; }
+    .section h2 { font-size: 32px; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+    
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 32px; }
+    .card { background: var(--surface); border: 1px solid var(--border); padding: 24px; border-radius: 8px; transition: border-color 0.2s; }
+    .card:hover { border-color: var(--accent); }
+    .card h3 { font-size: 20px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+    .card p { color: var(--text-dim); font-size: 15px; }
+
+    pre {
+      background: var(--surface);
+      color: var(--text);
+      padding: 20px;
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 14px;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      margin-bottom: 24px;
+    }
+    
+    code { font-family: var(--font-mono); font-size: 14px; }
+
+    .footer {
+      border-top: 1px solid var(--border);
+      padding-top: 32px;
+      display: flex;
+      justify-content: space-between;
+      color: var(--text-dim);
+      font-size: 14px;
+    }
+    .footer a { color: var(--accent); text-decoration: none; }
+    .footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+  <nav class="nav">
+    <a href="index.html" class="nav__brand">Falcon<span>Q</span></a>
+    <div class="nav__links">
+      <a href="index.html" class="nav__link active">Overview</a>
+      <a href="architecture.html" class="nav__link">Architecture</a>
+      <a href="api.html" class="nav__link">API</a>
+      <a href="deployment.html" class="nav__link">Deployment</a>
+    </div>
+  </nav>
+
+  <div class="container">
+    <div class="hero">
+      <h1>Distributed Priority <span>Messaging</span></h1>
+      <p>A cloud-native, high-performance distributed message broker engineered from first principles in Go. Designed for microservices that demand strict priority-aware delivery and zero data loss.</p>
+      <a href="architecture.html" class="btn">Explore Architecture</a>
+    </div>
+
+    <div class="section" id="overview">
+      <h2>Why FalconQ?</h2>
+      <p>Modern distributed systems face a critical challenge: head-of-line blocking. When bulk data processing competes with latency-sensitive control messages, traditional FIFO queues struggle. <strong>FalconQ</strong> introduces a native dual-queue architecture that prioritizes urgent messages at the storage level, combined with Raft-based consensus for enterprise-grade durability.</p>
+      
+      <div class="grid">
+        <div class="card">
+          <h3>⚡ Strict Priority</h3>
+          <p>Built-in dual queues guarantee that high-priority control messages bypass low-priority bulk messages instantly.</p>
+        </div>
+        <div class="card">
+          <h3>🛡️ Zero Data Loss</h3>
+          <p>Powered by BadgerDB (LSM-tree), messages are durably appended to disk and replicated across a quorum before acknowledgment.</p>
+        </div>
+        <div class="card">
+          <h3>🔄 Distributed Consensus</h3>
+          <p>Utilizes HashiCorp's robust Raft implementation for automated leader election and partition-level replication.</p>
+        </div>
+        <div class="card">
+          <h3>🚀 High Throughput</h3>
+          <p>Designed to sustain over 1.5M messages/minute through horizontal partition scaling (Consistent Hashing) and batch consumption.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="section" id="quickstart">
+      <h2>Quick Start</h2>
+      <p>Get a local FalconQ cluster up and running in seconds.</p>
+      
+      <pre><code># 1. Clone the repository
+git clone https://github.com/async-ar15/FalconQ-distributed-message-queue.git
+cd FalconQ-distributed-message-queue
+
+# 2. Install dependencies
+go mod tidy
+
+# 3. Start a 3-node cluster (in separate terminals)
+go run broker/main.go -config broker/config1.yaml -nodeid broker1
+go run broker/main.go -config broker/config2.yaml -nodeid broker2
+go run broker/main.go -config broker/config3.yaml -nodeid broker3</code></pre>
+
+      <p>Once the cluster forms a Raft quorum and elects a leader, you can start publishing and consuming via the REST API.</p>
+    </div>
+
+    <div class="footer">
+      <div>Developed by Aman Rajput</div>
+      <div style="display: flex; gap: 24px;">
+        <a href="architecture.html">Architecture →</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

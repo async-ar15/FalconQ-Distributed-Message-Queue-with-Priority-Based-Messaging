@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FalconQ - Deployment</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --text: #c9d1d9;
+      --text-dim: #8b949e;
+      --border: #30363d;
+      --accent: #3b82f6;
+      --accent-bright: #60a5fa;
+      
+      --font-display: 'Plus Jakarta Sans', system-ui, sans-serif;
+      --font-body: 'Inter', system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      line-height: 1.6;
+      padding-top: 80px;
+    }
+
+    .nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 60px;
+      background: rgba(22, 27, 34, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 32px;
+      z-index: 100;
+    }
+
+    .nav__brand {
+      font-family: var(--font-display);
+      font-weight: 700;
+      color: #ffffff;
+      text-decoration: none;
+      font-size: 18px;
+      margin-right: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .nav__brand span { color: var(--accent); }
+
+    .nav__links {
+      display: flex;
+      gap: 24px;
+    }
+
+    .nav__link {
+      font-family: var(--font-body);
+      font-weight: 500;
+      font-size: 14px;
+      color: var(--text-dim);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .nav__link:hover, .nav__link.active {
+      color: #ffffff;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+
+    h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 700; color: #ffffff; }
+    
+    .hero { margin-bottom: 60px; border-bottom: 1px solid var(--border); padding-bottom: 40px; }
+    .hero h1 { font-size: 48px; line-height: 1.1; letter-spacing: -1px; }
+
+    .section { margin-bottom: 80px; }
+    .section h2 { font-size: 32px; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+    .section h3 { font-size: 24px; margin-top: 32px; margin-bottom: 16px; color: #ffffff; }
+    .section p { color: var(--text-dim); margin-bottom: 16px; }
+    
+    .callout {
+      background: rgba(59, 130, 246, 0.1);
+      border-left: 4px solid var(--accent);
+      padding: 20px 24px;
+      border-radius: 0 8px 8px 0;
+      margin-bottom: 24px;
+    }
+    .callout h4 { font-family: var(--font-body); font-weight: 600; margin-bottom: 8px; font-size: 16px; color: var(--accent-bright); }
+    
+    pre {
+      background: var(--surface);
+      color: var(--text);
+      padding: 20px;
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 14px;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      margin-bottom: 24px;
+    }
+
+    .footer {
+      border-top: 1px solid var(--border);
+      padding-top: 32px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 14px;
+    }
+    .footer a { color: var(--accent); text-decoration: none; }
+    .footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+  <nav class="nav">
+    <a href="index.html" class="nav__brand">Falcon<span>Q</span></a>
+    <div class="nav__links">
+      <a href="index.html" class="nav__link">Overview</a>
+      <a href="architecture.html" class="nav__link">Architecture</a>
+      <a href="api.html" class="nav__link">API</a>
+      <a href="deployment.html" class="nav__link active">Deployment</a>
+    </div>
+  </nav>
+
+  <div class="container">
+    <div class="hero">
+      <h1>Deployment Guide</h1>
+    </div>
+
+    <div class="section" id="configuration">
+      <h2>Cluster Configuration</h2>
+      <p>FalconQ brokers discover each other via a `config.yaml` file. Each node must be uniquely identified by its <code>node_id</code> and aware of the HTTP addresses of its peers.</p>
+      
+      <pre><code>node_id: broker1
+http_port: 8080
+peers:
+  - id: broker2
+    address: http://localhost:8081
+  - id: broker3
+    address: http://localhost:8082</code></pre>
+      
+      <div class="callout">
+        <h4>Consistent Networking</h4>
+        <p>Ensure that the peer addresses are fully resolvable by all nodes in the cluster. In Kubernetes, this typically maps to a Headless Service.</p>
+      </div>
+    </div>
+
+    <div class="section" id="docker">
+      <h2>Containerized Deployment</h2>
+      <p>For isolated testing, you can run the cluster using Docker Compose. This simulates network latency and prevents local port collisions.</p>
+      <pre><code>docker-compose up -d --scale broker=3</code></pre>
+    </div>
+
+    <div class="section" id="kubernetes">
+      <h2>Kubernetes (Production)</h2>
+      <p>For true production scale on AWS EKS, GCP GKE, or Azure AKS, FalconQ should be deployed as a <code>StatefulSet</code>.</p>
+      
+      <ul>
+        <li><strong>StatefulSets:</strong> Guarantee stable network identities (e.g., <code>falconq-0</code>, <code>falconq-1</code>) which is critical for Raft consensus.</li>
+        <li><strong>Persistent Volumes (PVCs):</strong> Ensure that the BadgerDB commit log survives pod restarts. Map a highly-available block storage (like AWS EBS gp3) to the <code>/data</code> directory inside the container.</li>
+        <li><strong>Headless Service:</strong> Used to bypass standard load balancing so peers can communicate directly with each other via their DNS records.</li>
+      </ul>
+    </div>
+
+    <div class="footer">
+      <a href="api.html">← API Reference</a>
+      <div></div>
+    </div>
+  </div>
+</body>
+</html>

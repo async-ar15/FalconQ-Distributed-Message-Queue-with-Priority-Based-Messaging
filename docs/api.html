@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FalconQ - API Reference</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --text: #c9d1d9;
+      --text-dim: #8b949e;
+      --border: #30363d;
+      --accent: #3b82f6;
+      --accent-bright: #60a5fa;
+      
+      --font-display: 'Plus Jakarta Sans', system-ui, sans-serif;
+      --font-body: 'Inter', system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      line-height: 1.6;
+      padding-top: 80px;
+    }
+
+    .nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 60px;
+      background: rgba(22, 27, 34, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 32px;
+      z-index: 100;
+    }
+
+    .nav__brand {
+      font-family: var(--font-display);
+      font-weight: 700;
+      color: #ffffff;
+      text-decoration: none;
+      font-size: 18px;
+      margin-right: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .nav__brand span { color: var(--accent); }
+
+    .nav__links {
+      display: flex;
+      gap: 24px;
+    }
+
+    .nav__link {
+      font-family: var(--font-body);
+      font-weight: 500;
+      font-size: 14px;
+      color: var(--text-dim);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .nav__link:hover, .nav__link.active {
+      color: #ffffff;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+
+    h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 700; color: #ffffff; }
+    
+    .hero { margin-bottom: 60px; border-bottom: 1px solid var(--border); padding-bottom: 40px; }
+    .hero h1 { font-size: 48px; line-height: 1.1; letter-spacing: -1px; }
+
+    .section { margin-bottom: 80px; }
+    .section h2 { font-size: 32px; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+    .section h3 { font-size: 20px; margin-top: 40px; margin-bottom: 16px; color: var(--accent); font-family: var(--font-mono); }
+    .section p { color: var(--text-dim); margin-bottom: 16px; }
+    
+    .prop-list { margin-bottom: 24px; }
+    .prop-item { display: flex; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--border); }
+    .prop-name { font-family: var(--font-mono); font-weight: 600; min-width: 140px; color: #ffffff; }
+    .prop-type { font-family: var(--font-mono); color: var(--accent); font-size: 13px; margin-bottom: 4px; }
+    .prop-desc { color: var(--text-dim); font-size: 14px; }
+
+    pre {
+      background: var(--surface);
+      color: var(--text);
+      padding: 20px;
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 14px;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      margin-bottom: 24px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: var(--font-mono);
+      font-weight: 600;
+      margin-right: 8px;
+    }
+    .badge.post { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
+    .badge.get { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+
+    .footer {
+      border-top: 1px solid var(--border);
+      padding-top: 32px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 14px;
+    }
+    .footer a { color: var(--accent); text-decoration: none; }
+    .footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+  <nav class="nav">
+    <a href="index.html" class="nav__brand">Falcon<span>Q</span></a>
+    <div class="nav__links">
+      <a href="index.html" class="nav__link">Overview</a>
+      <a href="architecture.html" class="nav__link">Architecture</a>
+      <a href="api.html" class="nav__link active">API</a>
+      <a href="deployment.html" class="nav__link">Deployment</a>
+    </div>
+  </nav>
+
+  <div class="container">
+    <div class="hero">
+      <h1>API Reference</h1>
+    </div>
+
+    <div class="section" id="publish">
+      <h2>Publishing Messages</h2>
+      
+      <h3><span class="badge post">POST</span> /topic/{topic_name}/publish</h3>
+      <p>Appends a new message to the specified topic. The message will be routed to a partition based on the cluster's consistent hashing ring.</p>
+      
+      <div class="prop-list">
+        <div class="prop-item">
+          <div class="prop-name">message</div>
+          <div>
+            <div class="prop-type">string (required)</div>
+            <div class="prop-desc">The raw string or JSON payload to store in the queue.</div>
+          </div>
+        </div>
+        <div class="prop-item">
+          <div class="prop-name">priority</div>
+          <div>
+            <div class="prop-type">string (optional)</div>
+            <div class="prop-desc">Set to <code>"high"</code> to route to the High-Priority Queue. Default is <code>"low"</code>.</div>
+          </div>
+        </div>
+      </div>
+      
+      <pre><code>curl -X POST http://localhost:8080/topic/orders/publish \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Urgent refund request", "priority": "high"}'</code></pre>
+    </div>
+
+    <div class="section" id="consume">
+      <h2>Consuming Messages</h2>
+      
+      <h3><span class="badge get">GET</span> /topic/{topic_name}/consume</h3>
+      <p>Consumes a batch of messages from the topic. High-priority messages are always drained before low-priority ones. <strong>This endpoint is stateful</strong>: it automatically tracks and increments the read offset for the provided <code>consumerID</code>.</p>
+      
+      <div class="prop-list">
+        <div class="prop-item">
+          <div class="prop-name">consumerID</div>
+          <div>
+            <div class="prop-type">string (required)</div>
+            <div class="prop-desc">A unique identifier for the consumer (or consumer group).</div>
+          </div>
+        </div>
+        <div class="prop-item">
+          <div class="prop-name">batch</div>
+          <div>
+            <div class="prop-type">integer (optional)</div>
+            <div class="prop-desc">Number of messages to pull in a single request. Default is 10.</div>
+          </div>
+        </div>
+      </div>
+      
+      <pre><code>curl "http://localhost:8080/topic/orders/consume?consumerID=worker-node-1&batch=5"</code></pre>
+    </div>
+
+    <div class="section" id="peek">
+      <h2>Peeking Messages</h2>
+      
+      <h3><span class="badge get">GET</span> /topic/{topic_name}/peek</h3>
+      <p>Statelessly retrieves messages starting from a specific absolute offset without updating any consumer state.</p>
+      
+      <div class="prop-list">
+        <div class="prop-item">
+          <div class="prop-name">offset</div>
+          <div>
+            <div class="prop-type">integer (required)</div>
+            <div class="prop-desc">The exact commit log offset to start reading from.</div>
+          </div>
+        </div>
+        <div class="prop-item">
+          <div class="prop-name">batch</div>
+          <div>
+            <div class="prop-type">integer (optional)</div>
+            <div class="prop-desc">Number of messages to pull in a single request. Default is 1.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section" id="admin">
+      <h2>Administrative</h2>
+      
+      <h3><span class="badge get">GET</span> /topics</h3>
+      <p>Returns a list of all active topics in the cluster.</p>
+
+      <h3><span class="badge get">GET</span> /topics/{topic_name}/partitions</h3>
+      <p>Inspects the partition assignments, metadata, and current leader distribution for a given topic.</p>
+    </div>
+
+    <div class="footer">
+      <a href="architecture.html">← Architecture</a>
+      <a href="deployment.html">Deployment Guide →</a>
+    </div>
+  </div>
+</body>
+</html>
