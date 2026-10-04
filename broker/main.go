@@ -725,3 +725,65 @@ func handlePublish(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "message committed", "topic": topicName, "partitionID": targetPartitionID, "offset": assignedOffset, "priority": msg.Priority})
 }
+func handlePeek(c *gin.Context) {
+	topicName := c.Param("topic")
+	offsetQuery := c.DefaultQuery("offset", "0")
+	batchQuery := c.DefaultQuery("batch", "1")
+	partitionIDStr := c.DefaultQuery("partitionID", "-1")
+	startOffset, err := strconv.ParseUint(offsetQuery, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, NewApiError("ValidationError", "Invalid offset value", "Offset must be a non-negative integer"))
+		return
+	}
+	batchSize, err := strconv.Atoi(batchQuery)
+	if err != nil || batchSize <= 0 {
+		c.JSON(http.StatusBadRequest, NewApiError("ValidationError", "Invalid batch size", "Batch size must be a positive integer"))
+		return
+	}
+	partitionID, err := strconv.Atoi(partitionIDStr)
+	if err != nil || partitionID < 0 {
+		c.JSON(http.StatusBadRequest, NewApiError("ValidationError", "Missing or invalid partitionID", "partitionID query parameter is required"))
+		return
+	}
+	topic, err := broker.getOrCreateTopic(topicName)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, NewApiError("ServerError", "Failed to access topic", err.Error()))
+		return
+	}
+	if partitionID >= topic.NumPartitions {
+		c.JSON(http.StatusBadRequest, NewApiError("ValidationError", "Invalid partitionID", fmt.Sprintf("Partition ID must be < %d for topic %s", topic.NumPartitions, topicName)))
+		return
+	}
+	partition, err := topic.getOrCreatePartition(partitionID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, NewApiError("ServerError", "Failed to access specified partition", err.Error()))
+		return
+	}
+	rawMessages, nextOffsetRead, err := partition.ReadMessages(startOffset, batchSize)
+	if err != nil {
+		log.Printf("❌ Read messages peek topic '%s' p%d: %v", topicName, partitionID, err)
+		c.JSON(http.StatusInternalServerError, NewApiError("ServerError", "Failed to read messages", err.Error()))
+		return
+	}
+	messagesToSend := make([]StoredMessage, 0, len(rawMessages))
+	for _, msg := range rawMessages {
+		if msg.Priority == "high" {
+			messagesToSend = append(messagesToSend, msg)
+		}
+	}
+	for _, msg := range rawMessages {
+		if len(messagesToSend) >= batchSize {
+			break
+		}
+		if msg.Priority == "low" {
+			messagesToSend = append(messagesToSend, msg)
+		}
+	}
+	finalClientNextOffset := startOffset
+	if len(messagesToSend) > 0 {
+		finalClientNextOffset = messagesToSend[len(messagesToSend)-1].Offset + 1
+	} else {
+		finalClientNextOffset = nextOffsetRead
+	}
+	c.JSON(http.StatusOK, gin.H{"topic": topicName, "partitionID": partitionID, "messages": messagesToSend, "startOffset": startOffset, "count": len(messagesToSend), "nextOffset": finalClientNextOffset})
+}
